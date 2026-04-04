@@ -6,14 +6,14 @@ from datetime import datetime
 import pytz
 from pyrogram import Client, enums, errors, raw
 
-# --- CONFIGURATION (RAILWAY) ---
+# --- CONFIGURATION ---
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 LOG_CHANNEL = "@farinmodssv2"
 WIB = pytz.timezone('Asia/Jakarta')
 
-# --- KONTEN PROMOSI TERBARU FARIN SHOP ---
+# --- KONTEN PROMOSI (TETAP BERSIH) ---
 PROMO_TEXT = (
 "🚀 **FARIN SHOP – OTP TERCEPAT & TERMURAH!**\n\n"
 "Butuh OTP cepat & murah untuk WhatsApp, Telegram, Instagram, Facebook, dan banyak aplikasi lainnya?\n"
@@ -46,144 +46,143 @@ app = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     session_string=SESSION_STRING,
-    sleep_threshold=120
+    sleep_threshold=180
 )
 
-async def update_dashboard(stats_content):
+def get_loading_bar(percentage):
+    """Gaya loading bar dengan simbol block custom"""
+    filled = int(percentage / 10)
+    bar = "█" * filled + "▒" * (10 - filled)
+    return f"`|{bar}|` **{percentage:.1f}%**"
+
+async def update_dashboard(stats_content, status_type="RUNNING"):
+    """Update Dashboard dengan UI Terminal Premium"""
     global status_msg_id
-    now = datetime.now(WIB).strftime("%d/%m/%Y %H:%M:%S")
-    header = f"🛡️ **FARIN SHOP MONITORING**\n{'─'*25}\n"
-    footer = f"\n{'─'*25}\n🕒 *Last Update: {now} WIB*"
-    full_text = header + stats_content + footer
+    now = datetime.now(WIB).strftime("%H:%M:%S")
+    
+    status_map = {
+        "SCANNING": "🔍 [ SCANNING DATABASE ]",
+        "ADVERTISING": "🛰️ [ BROADCASTING LIVE ]",
+        "WAITING": "⏳ [ FLOOD RESTRICTION ]",
+        "SLEEPING": "💤 [ STANDBY MODE ]"
+    }
+    
+    status_display = status_map.get(status_type, "🟢 [ ACTIVE ]")
+    
+    ui_text = (
+        f"        ◈ **FARIN SHOP TERMINAL v5.0** ◈\n"
+        f"`──────────────────────────────`\n"
+        f"⌚ **SYSTEM TIME :** `{now} WIB`\n"
+        f"📡 **CORE STATUS :** `{status_display}`\n"
+        f"📶 **CONNECTION  :** `SECURE (SSL/TLS)`\n"
+        f"⚙️ **SERVER ID   :** `RAILWAY-NODE-01`\n"
+        f"`──────────────────────────────`\n"
+        f"{stats_content}\n"
+        f"`──────────────────────────────`\n"
+        f"⚡ **POWERED BY:** `FARINMODS CORE ENGINE`"
+    )
+    
     try:
         if status_msg_id:
-            await app.edit_message_text(LOG_CHANNEL, status_msg_id, full_text)
+            await app.edit_message_text(LOG_CHANNEL, status_msg_id, ui_text)
         else:
-            msg = await app.send_message(LOG_CHANNEL, full_text)
+            msg = await app.send_message(LOG_CHANNEL, ui_text)
             status_msg_id = msg.id
     except:
         try:
-            msg = await app.send_message(LOG_CHANNEL, full_text)
+            msg = await app.send_message(LOG_CHANNEL, ui_text)
             status_msg_id = msg.id
         except: pass
 
-# --- FITUR: BULK JOIN (SOLUSI FIX FILTER_INCLUDE_EMPTY) ---
-@app.on_message(enums.ChatType.PRIVATE)
+# --- JOIN HANDLER ---
+@app.on_message(enums.ChatType.PRIVATE & ~enums.MessageService)
 async def handle_bulk_join(client, message):
     if message.text and message.text.lower().startswith("/join"):
         links = re.findall(r'(https?://t\.me/\S+)', message.text)
-        if not links:
-            await message.reply("❌ Tidak ada link ditemukan.")
-            return
-
-        report = await message.reply(f"⏳ Memproses **{len(links)}** link...")
-        success, failed = 0, 0
-        error_logs = ""
-
+        if not links: return
+        report = await message.reply("🚀 `BOOTING JOIN PROTOCOL...`")
+        s, f = 0, 0
         for link in links:
             try:
-                # Ambil slug dari link
                 slug = link.split('/')[-1]
-                
                 if "addlist" in link:
-                    # 1. Cek info chatlist untuk mendapatkan peers
-                    check = await client.invoke(
-                        raw.functions.chatlists.CheckChatlistInvite(slug=slug)
-                    )
-                    
-                    # 2. Siapkan list InputPeer dari peers yang ada di folder
+                    check = await client.invoke(raw.functions.chatlists.CheckChatlistInvite(slug=slug))
                     input_peers = []
-                    # Ambil dari chatlist (peers yang ada di dalam folder tersebut)
                     for chat in check.chats:
-                        if isinstance(chat, raw.types.Chat) or isinstance(chat, raw.types.Channel):
+                        if isinstance(chat, (raw.types.Chat, raw.types.Channel)):
                             if isinstance(chat, raw.types.Chat):
                                 input_peers.append(raw.types.InputPeerChat(chat_id=chat.id))
                             else:
                                 input_peers.append(raw.types.InputPeerChannel(channel_id=chat.id, access_hash=chat.access_hash))
-
-                    # 3. Join Chatlist dengan menyertakan peers agar tidak FILTER_INCLUDE_EMPTY
-                    await client.invoke(
-                        raw.functions.chatlists.JoinChatlistInvite(
-                            slug=slug,
-                            peers=input_peers
-                        )
-                    )
-                    
-                    # 4. Hapus Folder (DialogFilter) agar tidak memenuhi limit 10 folder
-                    await asyncio.sleep(2)
-                    try:
-                        res = await client.invoke(raw.functions.messages.GetDialogFilters())
-                        for filt in res:
-                            if hasattr(filt, "id") and filt.id != 0:
-                                # Kita hapus filter folder yang baru masuk
-                                await client.invoke(raw.functions.messages.UpdateDialogFilter(id=filt.id))
-                    except: pass
-                    
-                    success += 1
+                    await client.invoke(raw.functions.chatlists.JoinChatlistInvite(slug=slug, peers=input_peers))
+                    s += 1
                 else:
-                    # Join grup biasa
-                    await client.join_chat(link)
-                    success += 1
-                
-                await asyncio.sleep(random.randint(3, 7))
-                
-            except errors.FloodWait as e:
-                error_logs += f"• {link}: FloodWait {e.value}s\n"
-                failed += 1
-            except Exception as e:
-                error_logs += f"• {link}: {str(e)}\n"
-                failed += 1
+                    await client.join_chat(link); s += 1
+                await asyncio.sleep(5)
+            except: f += 1
+        await report.edit_text(f"📊 **JOIN REPORT**\n✅ SUCCESS: `{s}`\n❌ FAILED: `{f}`")
 
-        final_msg = f"✅ **Bulk Join Selesai!**\n🔥 Sukses: {success}\n❌ Gagal: {failed}\n"
-        if error_logs:
-            final_msg += f"\n**Detail Error:**\n{error_logs}"
-        
-        await report.edit_text(final_msg)
-
+# --- PROMO HANDLER ---
 async def auto_promo():
-    try:
-        if not app.is_connected:
-            await app.start()
-    except: pass
-
-    await update_dashboard("🚀 **Status:** Online\n📡 **System:** Fixed Join Folder Mode")
+    if not app.is_connected:
+        await app.start()
     
     while True:
-        await update_dashboard("🔍 **Status:** Scanning Groups...")
+        await update_dashboard("🛠️ `INITIALIZING DATABASE SCAN...`", "SCANNING")
         groups = []
         try:
-            async for dialog in app.get_dialogs():
+            async for dialog in app.get_dialogs(limit=0):
                 if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
                     groups.append(dialog.chat.id)
         except: pass
 
         if not groups:
-            await update_dashboard("⚠️ **Status:** Grup Kosong."); await asyncio.sleep(300); continue
+            await update_dashboard("⚠️ `DATABASE EMPTY - RE-SCANNING...`", "SLEEPING")
+            await asyncio.sleep(300); continue
 
         random.shuffle(groups)
         s, f, l = 0, 0, 0
+        total = len(groups)
 
         for index, chat_id in enumerate(groups):
             try:
                 await app.send_message(chat_id, PROMO_TEXT)
                 s += 1
-            except (errors.ChatWriteForbidden, errors.UserBannedInChannel, errors.ChannelPrivate):
+            except (errors.ChatWriteForbidden, errors.UserBannedInChannel, errors.ChatInvalid, errors.PeerIdInvalid, errors.ChannelPrivate):
                 try: await app.leave_chat(chat_id); l += 1
                 except: pass
             except errors.FloodWait as e:
+                await update_dashboard(f"☣️ `COOLING DOWN: {e.value}s`", "WAITING")
                 await asyncio.sleep(e.value)
                 try: await app.send_message(chat_id, PROMO_TEXT); s += 1
                 except: f += 1
             except: f += 1
 
-            if (index + 1) % 10 == 0 or (index + 1) == len(groups):
-                pct = ((index + 1) / len(groups)) * 100
-                await update_dashboard(f"📤 **Promo Aktif**\n📊 {index+1}/{len(groups)} ({pct:.1f}%)\n✅ {s} | ❌ {f} | 🚪 {l}")
+            if (index + 1) % 5 == 0 or (index + 1) == total:
+                pct = ((index + 1) / total) * 100
+                loading_bar = get_loading_bar(pct)
+                remains = total - (index + 1)
+                
+                # Desain Statistik yang Lebih "Penuh"
+                stats = (
+                    f"📂 **PROGRESS STATUS**\n"
+                    f"├ {loading_bar}\n"
+                    f"├ `TOTAL TARGET :` {total}\n"
+                    f"└ `REMAINING    :` {remains}\n\n"
+                    f"📈 **OPERATIONAL LOGS**\n"
+                    f"├ `SUCCESS      :` {s} ✅\n"
+                    f"├ `FAILED       :` {f} ❌\n"
+                    f"└ `CLEANED      :` {l} 🧹\n\n"
+                    f"📡 **CURRENT ACTIVITY**\n"
+                    f"└ `TARGET ID :` `{chat_id}`\n"
+                    f"└ `LOAD      :` `{(index+1)}/{total} UNITS`"
+                )
+                await update_dashboard(stats, "ADVERTISING")
+            
+            await asyncio.sleep(random.randint(1, 3))
 
-            await asyncio.sleep(random.randint(1, 5))
-
-        await update_dashboard(f"🏁 **Selesai!**\n✅ {s} | 🚪 {l}\n💤 Istirahat: 2 Jam")
-        await asyncio.sleep(600)
+        await update_dashboard(f"🏁 **ROUND COMPLETE**\n\n✅ TOTAL BROADCAST: `{s}`\n🧹 SYSTEM CLEANED: `{l}`\n💤 NEXT REBOOT: `2 HOURS`", "SLEEPING")
+        await asyncio.sleep(500)
 
 if __name__ == "__main__":
     while True:
