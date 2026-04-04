@@ -13,7 +13,7 @@ SESSION_STRING = os.getenv("SESSION_STRING")
 LOG_CHANNEL = "@farinmodssv2"
 WIB = pytz.timezone('Asia/Jakarta')
 
-# --- KONTEN PROMOSI TERBARU ---
+# --- KONTEN PROMOSI TERBARU FARIN SHOP ---
 PROMO_TEXT = (
 "🚀 **FARIN SHOP – OTP TERCEPAT & TERMURAH!**\n\n"
 "Butuh OTP cepat & murah untuk WhatsApp, Telegram, Instagram, Facebook, dan banyak aplikasi lainnya?\n"
@@ -67,7 +67,7 @@ async def update_dashboard(stats_content):
             status_msg_id = msg.id
         except: pass
 
-# --- FITUR: BULK JOIN (SOLUSI RAW API UNTUK SEMUA VERSI PYROGRAM) ---
+# --- FITUR: BULK JOIN (FIXED 400 FILTER_INCLUDE_EMPTY) ---
 @app.on_message(enums.ChatType.PRIVATE)
 async def handle_bulk_join(client, message):
     if message.text and message.text.lower().startswith("/join"):
@@ -76,43 +76,52 @@ async def handle_bulk_join(client, message):
             await message.reply("❌ Tidak ada link ditemukan.")
             return
 
-        report = await message.reply(f"⏳ Memproses **{len(links)}** link dengan Raw API...")
+        report = await message.reply(f"⏳ Memproses **{len(links)}** link...")
         success, failed = 0, 0
         error_logs = ""
 
         for link in links:
             try:
-                # Mengambil 'slug' (kode unik setelah addlist/ atau joinchat/)
                 slug = link.split('/')[-1]
                 
                 if "addlist" in link:
-                    # Menggunakan Raw Invoke agar tidak kena 'AttributeError'
-                    # Join ke Chatlist/Folder
-                    await client.invoke(
+                    # 1. Cek isi folder untuk mendapatkan list 'peers' (Grup di dalamnya)
+                    check = await client.invoke(
                         raw.functions.chatlists.CheckChatlistInvite(slug=slug)
                     )
-                    await client.invoke(
-                        raw.functions.chatlists.JoinChatlistInvite(slug=slug, peers=[])
-                    )
-                    await asyncio.sleep(3)
                     
-                    # Hapus Folder segera agar limit aman
+                    # 2. Ambil semua ID grup/channel dari folder tersebut
+                    peers = []
+                    if hasattr(check, "already_peers"):
+                        peers.extend(check.already_peers)
+                    if hasattr(check, "new_peers"):
+                        peers.extend(check.new_peers)
+                    
+                    # 3. Join dengan menyertakan peers (Menghindari FILTER_INCLUDE_EMPTY)
+                    await client.invoke(
+                        raw.functions.chatlists.JoinChatlistInvite(
+                            slug=slug,
+                            peers=peers
+                        )
+                    )
+                    
+                    # 4. Hapus folder segera (Logika Raw API)
                     try:
-                        folder_data = await client.invoke(raw.functions.messages.GetDialogFilters())
-                        for filt in folder_data:
-                            if isinstance(filt, raw.types.DialogFilter):
+                        dialog_filters = await client.invoke(raw.functions.messages.GetDialogFilters())
+                        for filt in dialog_filters:
+                            # Hapus filter yang tipenya folder (bukan folder default 0)
+                            if hasattr(filt, 'id') and filt.id != 0:
                                 await client.invoke(raw.functions.messages.UpdateDialogFilter(id=filt.id, filter=None))
                     except: pass
                     
                 else:
-                    # Join Grup/Channel biasa
                     await client.join_chat(link)
                 
                 success += 1
                 await asyncio.sleep(random.randint(5, 10))
                 
             except errors.FloodWait as e:
-                error_logs += f"• {link}: Limit {e.value}s\n"
+                error_logs += f"• {link}: FloodWait {e.value}s\n"
                 failed += 1
             except Exception as e:
                 error_logs += f"• {link}: {str(e)}\n"
@@ -128,21 +137,17 @@ async def auto_promo():
     try:
         if not app.is_connected:
             await app.start()
-    except Exception: pass
+    except: pass
 
-    await update_dashboard("🚀 **Status:** Online\n📡 **System:** Raw API Mode Aktif")
+    await update_dashboard("🚀 **Status:** Online\n📡 **System:** Fixed Raw API Mode")
     
     while True:
         await update_dashboard("🔍 **Status:** Scanning Groups...")
         groups = []
         try:
             async for dialog in app.get_dialogs():
-                try:
-                    if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                        groups.append(dialog.chat.id)
-                except:
-                    try: await app.leave_chat(dialog.chat.id)
-                    except: pass
+                if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+                    groups.append(dialog.chat.id)
         except: pass
 
         if not groups:
@@ -178,5 +183,4 @@ if __name__ == "__main__":
         try:
             app.run(auto_promo())
         except Exception as e:
-            print(f"Restart: {e}")
             asyncio.run(asyncio.sleep(10))
