@@ -95,7 +95,7 @@ async def update_dashboard(stats_content, status_type="RUNNING"):
         except: pass
 
 # --- JOIN HANDLER ---
-@app.on_message(enums.ChatType.PRIVATE & ~enums.MessageService)
+@app.on_message(filters.private & ~filters.service)
 async def handle_bulk_join(client, message):
     if message.text and message.text.lower().startswith("/join"):
         links = re.findall(r'(https?://t\.me/\S+)', message.text)
