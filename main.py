@@ -10,10 +10,10 @@ from pyrogram import Client, enums, errors
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
-LOG_CHANNEL = "@farinmodssv2" #
+LOG_CHANNEL = "@farinmodssv2"
 
 # Setting Zona Waktu Indonesia (WIB)
-WIB = pytz.timezone('Asia/Jakarta') #
+WIB = pytz.timezone('Asia/Jakarta')
 
 # --- KONTEN PROMOSI TERBARU FARIN SHOP ---
 PROMO_TEXT = (
@@ -43,7 +43,7 @@ PROMO_TEXT = (
 )
 
 # Global variable untuk ID pesan Dashboard
-status_msg_id = None #
+status_msg_id = None
 
 app = Client(
     "farin_userbot",
@@ -56,7 +56,7 @@ app = Client(
 async def update_dashboard(stats_content):
     """Mengedit satu pesan log agar channel tetap bersih (Dashboard Mode)"""
     global status_msg_id
-    now = datetime.now(WIB).strftime("%d/%m/%Y %H:%M:%S") #
+    now = datetime.now(WIB).strftime("%d/%m/%Y %H:%M:%S")
     
     header = f"🛡️ **FARIN SHOP MONITORING**\n{'─'*25}\n"
     footer = f"\n{'─'*25}\n🕒 *Last Update: {now} WIB*"
@@ -64,10 +64,10 @@ async def update_dashboard(stats_content):
     
     try:
         if status_msg_id:
-            await app.edit_message_text(LOG_CHANNEL, status_msg_id, full_text) #
+            await app.edit_message_text(LOG_CHANNEL, status_msg_id, full_text)
         else:
             msg = await app.send_message(LOG_CHANNEL, full_text)
-            status_msg_id = msg.id #
+            status_msg_id = msg.id
     except Exception:
         try:
             msg = await app.send_message(LOG_CHANNEL, full_text)
@@ -75,11 +75,11 @@ async def update_dashboard(stats_content):
         except:
             pass
 
-# --- FITUR: BULK JOIN & AUTO DELETE FOLDER ---
+# --- FITUR: BULK JOIN DENGAN ERROR LOGGING DETAIL ---
 @app.on_message(enums.ChatType.PRIVATE)
 async def handle_bulk_join(client, message):
     if message.text and message.text.lower().startswith("/join"):
-        # Mengambil semua link t.me dari pesan
+        # Deteksi semua link t.me di dalam pesan
         links = re.findall(r'(https?://t\.me/\S+)', message.text)
         
         if not links:
@@ -88,24 +88,45 @@ async def handle_bulk_join(client, message):
 
         report = await message.reply(f"⏳ Memproses **{len(links)}** link sekaligus...")
         success, failed = 0, 0
+        error_logs = ""
 
         for link in links:
             try:
                 if "addlist" in link:
+                    # Gabung ke Folder
                     await client.join_chat_invite_folder(link)
-                    # Hapus Folder segera agar limit tidak penuh (Akun tetap di grup)
+                    # Jeda sinkronisasi agar grup masuk dulu sebelum folder dihapus
+                    await asyncio.sleep(5)
+                    # Hapus Folder (Akun tetap di dalam grup)
                     folders = await client.get_chat_invite_folders()
                     for folder in folders:
                         await client.delete_chat_invite_folder(folder.folder_id)
+                    success += 1
                 else:
+                    # Join grup/channel biasa
                     await client.join_chat(link)
+                    success += 1
                 
-                success += 1
-                await asyncio.sleep(random.randint(5, 10)) # Jeda aman
-            except:
+                await asyncio.sleep(random.randint(5, 10))
+            except errors.FloodWait as e:
+                error_logs += f"• {link}: Terkena Limit (Tunggu {e.value} detik)\n"
+                failed += 1
+            except errors.InviteHashExpired:
+                error_logs += f"• {link}: Link Kadaluwarsa\n"
+                failed += 1
+            except errors.ChannelsTooMuch:
+                error_logs += f"• {link}: Akun Penuh (Maks 500 Grup)\n"
+                failed += 1
+            except Exception as e:
+                # Menampilkan tipe error spesifik agar mudah diperbaiki
+                error_logs += f"• {link}: Error {type(e).__name__}\n"
                 failed += 1
 
-        await report.edit_text(f"✅ **Bulk Join Selesai!**\n🔥 Sukses: {success}\n❌ Gagal: {failed}\n🗑️ Folder dibersihkan.")
+        final_msg = f"✅ **Bulk Join Selesai!**\n🔥 Sukses: {success}\n❌ Gagal: {failed}\n"
+        if error_logs:
+            final_msg += f"\n**Detail Error:**\n{error_logs}"
+        
+        await report.edit_text(final_msg)
 
 async def auto_promo():
     # Menangani Error 409 (Conflict) saat startup
@@ -113,68 +134,69 @@ async def auto_promo():
         if not app.is_connected:
             await app.start()
     except errors.AuthKeyDuplicated:
-        print("Error 409: Session bentrok! Menunggu restart...") #
+        print("Error 409: Session bentrok! Menunggu restart...")
         await asyncio.sleep(15)
         return
 
-    await update_dashboard("🚀 **Status:** Userbot Online\n📡 **System:** Overpower Mode Aktif") #
+    await update_dashboard("🚀 **Status:** Userbot Online\n📡 **System:** Overpower Mode Aktif")
     
     while True:
-        await update_dashboard("🔍 **Status:** Memindai & Membersihkan Grup Sampah...") #
+        await update_dashboard("🔍 **Status:** Memindai & Membersihkan Grup Sampah...")
         
         groups = []
         try:
-            async for dialog in app.get_dialogs(): #
+            async for dialog in app.get_dialogs():
                 try:
-                    if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]: #
+                    if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
                         groups.append(dialog.chat.id)
-                except (errors.ChannelPrivate, errors.ChatAdminRequired, errors.UserBannedInChannel): #
+                except (errors.ChannelPrivate, errors.ChatAdminRequired, errors.UserBannedInChannel):
+                    # AUTO LEAVE jika grup sudah tidak bisa diakses
                     try:
-                        await app.leave_chat(dialog.chat.id) #
+                        await app.leave_chat(dialog.chat.id)
                     except: pass
                 except Exception:
                     continue
         except Exception as e:
-            await update_dashboard(f"⚠️ **Scan Terhambat:** {e}") #
+            await update_dashboard(f"⚠️ **Scan Terhambat:** {e}")
 
-        total_grup = len(groups) #
+        total_grup = len(groups)
         if total_grup == 0:
-            await update_dashboard("⚠️ **Status:** Tidak ada grup ditemukan!") #
+            await update_dashboard("⚠️ **Status:** Tidak ada grup ditemukan!")
             await asyncio.sleep(300)
             continue
 
-        random.shuffle(groups) #
-        success, failed, left = 0, 0, 0 #
+        random.shuffle(groups)
+        success, failed, left = 0, 0, 0
 
         for index, chat_id in enumerate(groups):
             try:
                 await app.send_message(chat_id, PROMO_TEXT)
-                success += 1 #
+                success += 1
                 
             except (errors.ChatWriteForbidden, 
                     errors.UserBannedInChannel, 
                     errors.ChatAdminRequired, 
                     errors.ChannelPrivate,
                     errors.ChatInvalid,
-                    errors.PeerIdInvalid): #
+                    errors.PeerIdInvalid):
                 try:
                     await app.leave_chat(chat_id)
-                    left += 1 #
+                    left += 1
                 except: pass
                 
             except errors.FloodWait as e:
-                await update_dashboard(f"⚠️ **FloodWait!** Limit `{e.value}` detik.") #
+                await update_dashboard(f"⚠️ **FloodWait!** Limit `{e.value}` detik.")
                 await asyncio.sleep(e.value)
                 try:
                     await app.send_message(chat_id, PROMO_TEXT)
                     success += 1
-                except: failed += 1 #
+                except: failed += 1
                 
             except Exception:
-                failed += 1 #
+                failed += 1
 
             if (index + 1) % 10 == 0 or (index + 1) == total_grup:
-                pct = ((index + 1) / total_grup) * 100 #
+                pct = ((index + 1) / total_grup) * 100
                 stats = (
                     f"📤 **Status:** Promosi Massal Aktif\n\n"
                     f"📊 **Progres:** {index + 1}/{total_grup} ({pct:.1f}%)\n"
@@ -183,28 +205,29 @@ async def auto_promo():
                     f"🚪 **Auto-Leave (Mati/Ban):** {left}\n\n"
                     f"ℹ️ *Grup bermasalah otomatis ditinggalkan.*"
                 )
-                await update_dashboard(stats) #
+                await update_dashboard(stats)
 
             # JEDA AMAN (Sangat penting agar akun tidak di-ban)
-            await asyncio.sleep(random.randint(1, 6))
+            await asyncio.sleep(random.randint(1, 3))
 
         await update_dashboard(
             f"🏁 **Status:** Putaran Selesai!\n\n"
             f"✅ **Total Berhasil:** {success}\n"
             f"❌ **Total Gagal:** {failed}\n"
             f"🚪 **Total Grup Dihapus:** {left}\n\n"
-            f"💤 **Mode:** Istirahat (2 Jam)"
-        ) #
+            f"💤 **Mode:** Istirahat ( 10menit )"
+        )
         
-        await asyncio.sleep(1200) # Istirahat 2 jam
+        await asyncio.sleep(600) # Istirahat 2 jam
 
 if __name__ == "__main__":
+    # Loop utama untuk menangani restart otomatis jika terjadi Conflict (409)
     while True:
         try:
-            app.run(auto_promo()) #
+            app.run(auto_promo())
         except errors.AuthKeyDuplicated:
-            print("Koneksi bentrok (409). Mematikan proses lama...") #
+            print("Koneksi bentrok (409). Mematikan proses lama...")
             asyncio.run(asyncio.sleep(15))
         except Exception as e:
-            print(f"Sistem Restart: {e}") #
+            print(f"Sistem Restart: {e}")
             asyncio.run(asyncio.sleep(10))
