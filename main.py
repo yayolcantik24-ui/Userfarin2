@@ -164,11 +164,12 @@ async def auto_promo():
                 log_text = (
                     f"📤 **PROMO PROGRESS**\n"
                     f"{'─'*20}\n"
+                    f"📍 Last: `{chat_id}`\n"
+                    f"📊 Progress: {index+1}/{len(groups)}\n"
+                    f"{'─'*20}\n"
                     f"✅ Sukses: **{s}**\n"
                     f"❌ Gagal: **{f}**\n"
                     f"🚪 Keluar: **{l}**\n\n"
-                    f"📍 Last: `{chat_id}`\n"
-                    f"📊 Progress: {index+1}/{len(groups)}\n"
                     f"🕒 Time: {current_time} WIB"
                 )
                 await update_promo_log(log_text)
@@ -189,27 +190,58 @@ async def auto_promo():
                 except:
                     f += 1
 
-            # ========== PENANGANAN ERROR DENGAN LOG KE CHANNEL ==========
+            # ========== PENANGANAN ERROR LENGKAP ==========
             except errors.PeerIdInvalid:
                 f += 1
                 now_ts = datetime.now().timestamp()
                 if now_ts - last_error_log_time >= 5:
-                    await app.send_message(LOG_CHANNEL, f"⚠️ **ERROR: PeerIdInvalid**\nGrup `{chat_id}` tidak valid atau bot tidak pernah join.")
+                    await app.send_message(LOG_CHANNEL, f"⚠️ **PeerIdInvalid**\nGrup `{chat_id}` tidak valid atau bot tidak pernah join.")
                     last_error_log_time = now_ts
 
             except errors.ChatAdminRequired:
                 f += 1
-                now_ts = datetime.now().timestamp()
-                if now_ts - last_error_log_time >= 5:
-                    await app.send_message(LOG_CHANNEL, f"⚠️ **ERROR: ChatAdminRequired**\nBot perlu jadi admin di grup `{chat_id}` untuk kirim pesan.")
-                    last_error_log_time = now_ts
+                try:
+                    await app.leave_chat(chat_id)
+                    l += 1
+                    await app.send_message(LOG_CHANNEL, f"🚪 **LEAVE (Admin only)**\nKeluar dari grup `{chat_id}` karena hanya admin yang bisa kirim pesan.")
+                except:
+                    pass
 
             except errors.RPCError as e:
                 f += 1
-                if "FLOOD_WAIT" not in str(e):
+                error_str = str(e)
+                
+                # 1. Grup di-restrict oleh Telegram
+                if "CHAT_RESTRICTED" in error_str:
+                    try:
+                        await app.leave_chat(chat_id)
+                        l += 1
+                        await app.send_message(LOG_CHANNEL, f"🚫 **LEAVE (Restricted by Telegram)**\nKeluar dari grup `{chat_id}` karena CHAT_RESTRICTED.")
+                    except:
+                        pass
+                
+                # 2. Grup hanya menerima pesan dari admin / plain text dilarang
+                elif "CHAT_SEND_PLAIN_FORBIDDEN" in error_str or "SEND_PLAIN" in error_str:
+                    try:
+                        await app.leave_chat(chat_id)
+                        l += 1
+                        await app.send_message(LOG_CHANNEL, f"🚪 **LEAVE (Admin only / No plain text)**\nKeluar dari grup `{chat_id}` karena hanya admin yang bisa kirim pesan teks.")
+                    except:
+                        pass
+                
+                # 3. Slowmode (grup punya jeda waktu antar pesan) -> TIDAK KELUAR, hanya log
+                elif "SLOWMODE_WAIT" in error_str:
+                    import re
+                    wait_match = re.search(r'wait of (\d+) seconds', error_str)
+                    wait_time = wait_match.group(1) if wait_match else "?"
+                    await app.send_message(LOG_CHANNEL, f"🐢 **SLOWMODE DETECTED**\nGrup `{chat_id}` memiliki jeda {wait_time} detik. Bot skip (tidak keluar).")
+                    # Tidak leave, biarkan saja
+                
+                # 4. FloodWait seharusnya sudah ditangani di atas, tapi jika masih masuk sini, abaikan
+                elif "FLOOD_WAIT" not in error_str:
                     now_ts = datetime.now().timestamp()
                     if now_ts - last_error_log_time >= 5:
-                        await app.send_message(LOG_CHANNEL, f"❌ **RPCError**\nGrup: `{chat_id}`\nDetail: `{e}`")
+                        await app.send_message(LOG_CHANNEL, f"❌ **RPCError (unhandled)**\nGrup: `{chat_id}`\nDetail: `{e}`")
                         last_error_log_time = now_ts
 
             except Exception as e:
@@ -218,14 +250,14 @@ async def auto_promo():
                 if now_ts - last_error_log_time >= 5:
                     await app.send_message(LOG_CHANNEL, f"🔥 **UNKNOWN ERROR**\nGrup: `{chat_id}`\nError: `{type(e).__name__}: {e}`")
                     last_error_log_time = now_ts
-            # ============================================================
+            # ===================================================
 
             # Update Dashboard Utama setiap 10 grup
             if (index + 1) % 10 == 0 or (index + 1) == len(groups):
                 pct = ((index + 1) / len(groups)) * 100
                 await update_dashboard(f"📤 **Promo Aktif**\n📊 {index+1}/{len(groups)} ({pct:.1f}%)\n✅ {s} | ❌ {f} | 🚪 {l}")
 
-            await asyncio.sleep(random.uniform(0.5, 1.2))
+            await asyncio.sleep(random.uniform(0.5, 1))
             
         await update_dashboard(f"🏁 **Selesai!**\n✅ {s} | 🚪 {l}\n💤 Istirahat: 10 menit")
         await app.send_message(LOG_CHANNEL, f"🏁 **PROMO SELESAI**\nBerhasil promosi ke {s} grup. Bot istirahat dulu.")
