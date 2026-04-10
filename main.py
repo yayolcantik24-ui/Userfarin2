@@ -15,29 +15,19 @@ WIB = pytz.timezone('Asia/Jakarta')
 
 # --- KONTEN PROMOSI TERBARU FARIN SHOP ---
 PROMO_TEXT = (
-"🚀 **FARIN SHOP – OTP TERCEPAT & TERMURAH!**\n\n"
+"🚀 **FARIN SHOP – LAYANAN OTP TERCEPAT & TERMURAH!**\n\n"
 "Butuh OTP cepat & murah untuk WhatsApp, Telegram, Instagram, Facebook, dan banyak aplikasi lainnya?\n"
-"Farin Shop solusinya!\n\n"
+"**Farin Shop solusinya!**\n\n"
 "✅ **Kenapa Pilih Farin Shop?**\n"
 "• Proses super cepat – OTP masuk dalam detik\n"
 "• Harga terjangkau – ada yang cuma 900p!\n"
 "• Banyak negara & server tersedia\n"
-"• Auto Order 24/7 – bot selalu online\n"
-"• Monitoring harga real-time – selalu update\n\n"
-"⭐ **Fitur Bot:**\n"
-"• Menu interaktif mudah digunakan\n"
-"• Cek saldo & riwayat transaksi\n"
-"• Notifikasi real-time\n"
-"• Support 24/7\n\n"
+"• Auto Order 24/7 – bot selalu online\n\n"
 "⚠️ **Garansi 100%** – Jika gagal, saldo dikembalikan\n\n"
-"🎯 **Layanan Tersedia:**\n"
-"WhatsApp, Telegram, Instagram, Facebook, dll\n"
-"Berbagai negara dan operator\n\n"
-"📢 **Cek Info Testimoni:**\n"
-"@Farinmods\n\n"
 "🤖 **Order Sekarang di Telegram:**\n"
-"@FarinShop_bot\n"
-"Chat & order langsung dalam 1 menit"
+"@FarinShop_bot\n\n"
+"**BOT CEK ID TELEGRAM NIH:**\n"
+"@cekid_kubot"
 )
 
 status_msg_id = None
@@ -207,7 +197,7 @@ async def auto_promo():
         await update_dashboard(f"🏁 **Selesai!**\n✅ {s} | 🚪 {l}\n💤 Istirahat: 10 menit")
         # Pesan penutup sesi
         await app.send_message(LOG_CHANNEL, f"🏁 **PROMO SELESAI**\nBerhasil promosi ke {s} grup. Bot istirahat dulu.")
-        await asyncio.sleep(2000)
+        await asyncio.sleep(500)
 
 if __name__ == "__main__":
     while True:
