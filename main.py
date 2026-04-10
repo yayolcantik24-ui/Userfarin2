@@ -124,7 +124,7 @@ async def handle_bulk_join(client, message):
             final_msg += f"\n**Detail Error:**\n{error_logs}"
         await report.edit_text(final_msg)
 
-# --- FITUR: AUTO PROMO ---
+# --- FITUR: AUTO PROMO (dengan log error lengkap) ---
 async def auto_promo():
     global promo_log_id
     try:
@@ -135,7 +135,7 @@ async def auto_promo():
     await update_dashboard("🚀 **Status:** Online\n📡 **System:** Fixed Join Folder Mode")
     
     while True:
-        promo_log_id = None # Reset log pesan setiap mulai sesi baru
+        promo_log_id = None
         await update_dashboard("🔍 **Status:** Scanning Groups...")
         groups = []
         try:
@@ -145,18 +145,21 @@ async def auto_promo():
         except: pass
 
         if not groups:
-            await update_dashboard("⚠️ **Status:** Grup Kosong."); await asyncio.sleep(300); continue
+            await update_dashboard("⚠️ **Status:** Grup Kosong.")
+            await asyncio.sleep(300)
+            continue
 
         random.shuffle(groups)
         s, f, l = 0, 0, 0
+        
+        # Cooldown untuk error log (agar tidak spam channel)
+        last_error_log_time = 0
 
         for index, chat_id in enumerate(groups):
             try:
-                # Mengirim pesan promo ke grup
                 await app.send_message(chat_id, PROMO_TEXT)
                 s += 1
                 
-                # Update Log (HANYA EDIT PESAN agar tidak spam)
                 current_time = datetime.now(WIB).strftime("%H:%M:%S")
                 log_text = (
                     f"📤 **PROMO PROGRESS**\n"
@@ -171,33 +174,62 @@ async def auto_promo():
                 await update_promo_log(log_text)
 
             except (errors.ChatWriteForbidden, errors.UserBannedInChannel, errors.ChannelPrivate):
-                # KIRIM PESAN BARU jika bot keluar grup agar muncul notifikasi
-                try: 
+                try:
                     await app.leave_chat(chat_id)
                     l += 1
-                    await app.send_message(LOG_CHANNEL, f"🚪 **AUTO LEAVE**\nBot baru saja keluar dari grup `{chat_id}` karena dilarang mengirim pesan.")
+                    await app.send_message(LOG_CHANNEL, f"🚪 **AUTO LEAVE**\nBot keluar dari grup `{chat_id}` karena dilarang mengirim pesan.")
                 except: pass
+
             except errors.FloodWait as e:
-                # KIRIM PESAN BARU untuk info FloodWait
-                await app.send_message(LOG_CHANNEL, f"⏳ **FLOODWAIT**\nTerkena limit! Menunggu {e.value} detik sebelum lanjut.")
+                await app.send_message(LOG_CHANNEL, f"⏳ **FLOODWAIT**\nMenunggu {e.value} detik...")
                 await asyncio.sleep(e.value)
-                try: 
+                try:
                     await app.send_message(chat_id, PROMO_TEXT)
                     s += 1
-                except: f += 1
-            except: f += 1
+                except:
+                    f += 1
+
+            # ========== PENANGANAN ERROR DENGAN LOG KE CHANNEL ==========
+            except errors.PeerIdInvalid:
+                f += 1
+                now_ts = datetime.now().timestamp()
+                if now_ts - last_error_log_time >= 5:
+                    await app.send_message(LOG_CHANNEL, f"⚠️ **ERROR: PeerIdInvalid**\nGrup `{chat_id}` tidak valid atau bot tidak pernah join.")
+                    last_error_log_time = now_ts
+
+            except errors.ChatAdminRequired:
+                f += 1
+                now_ts = datetime.now().timestamp()
+                if now_ts - last_error_log_time >= 5:
+                    await app.send_message(LOG_CHANNEL, f"⚠️ **ERROR: ChatAdminRequired**\nBot perlu jadi admin di grup `{chat_id}` untuk kirim pesan.")
+                    last_error_log_time = now_ts
+
+            except errors.RPCError as e:
+                f += 1
+                if "FLOOD_WAIT" not in str(e):
+                    now_ts = datetime.now().timestamp()
+                    if now_ts - last_error_log_time >= 5:
+                        await app.send_message(LOG_CHANNEL, f"❌ **RPCError**\nGrup: `{chat_id}`\nDetail: `{e}`")
+                        last_error_log_time = now_ts
+
+            except Exception as e:
+                f += 1
+                now_ts = datetime.now().timestamp()
+                if now_ts - last_error_log_time >= 5:
+                    await app.send_message(LOG_CHANNEL, f"🔥 **UNKNOWN ERROR**\nGrup: `{chat_id}`\nError: `{type(e).__name__}: {e}`")
+                    last_error_log_time = now_ts
+            # ============================================================
 
             # Update Dashboard Utama setiap 10 grup
             if (index + 1) % 10 == 0 or (index + 1) == len(groups):
                 pct = ((index + 1) / len(groups)) * 100
                 await update_dashboard(f"📤 **Promo Aktif**\n📊 {index+1}/{len(groups)} ({pct:.1f}%)\n✅ {s} | ❌ {f} | 🚪 {l}")
 
-            await asyncio.sleep(random.randint(1, 2))
-
+            await asyncio.sleep(random.uniform(0.5, 1.2))
+            
         await update_dashboard(f"🏁 **Selesai!**\n✅ {s} | 🚪 {l}\n💤 Istirahat: 10 menit")
-        # Pesan penutup sesi
         await app.send_message(LOG_CHANNEL, f"🏁 **PROMO SELESAI**\nBerhasil promosi ke {s} grup. Bot istirahat dulu.")
-        await asyncio.sleep(500)
+        await asyncio.sleep(1200)
 
 if __name__ == "__main__":
     while True:
