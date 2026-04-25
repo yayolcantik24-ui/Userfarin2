@@ -259,7 +259,7 @@ async def auto_promo():
             
         await update_dashboard(f"🏁 **Selesai!**\n✅ {s} | 🚪 {l}\n💤 Istirahat: 10 menit")
         await app.send_message(LOG_CHANNEL, f"🏁 **PROMO SELESAI**\nBerhasil promosi ke {s} grup. Bot istirahat dulu.")
-        await asyncio.sleep(2000)
+        await asyncio.sleep(950)
 
 if __name__ == "__main__":
     while True:
